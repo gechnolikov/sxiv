@@ -405,16 +405,17 @@ void tns_render(tns_t *tns)
 {
 	thumb_t *t;
 	win_t *win;
-	int i, cnt, r, x, y;
+	int i, cnt, r, x, y, halfwidth;
 
 	if (!tns->dirty)
 		return;
 
 	win = tns->win;
-	win_clear(win);
+    halfwidth = win->w / 2;
+	//win_clear(win);
 	imlib_context_set_drawable(win->buf.pm);
 
-	tns->cols = MAX(1, win->w / tns->dim);
+	tns->cols = MAX(1, halfwidth / tns->dim);
 	tns->rows = MAX(1, win->h / tns->dim);
 
 	if (*tns->cnt < tns->cols * tns->rows) {
@@ -429,7 +430,7 @@ void tns_render(tns_t *tns)
 			cnt -= r % tns->cols;
 	}
 	r = cnt % tns->cols ? 1 : 0;
-	tns->x = x = (win->w - MIN(cnt, tns->cols) * tns->dim) / 2 + tns->bw + 3;
+	tns->x = x = (halfwidth - MIN(cnt, tns->cols) * tns->dim) / 2 + tns->bw + 3;
 	tns->y = y = (win->h - (cnt / tns->cols + r) * tns->dim) / 2 + tns->bw + 3;
 	tns->loadnext = *tns->cnt;
 	tns->end = tns->first + cnt;

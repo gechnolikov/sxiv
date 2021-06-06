@@ -410,6 +410,10 @@ void redraw(void)
 			set_timeout(slideshow, t, false);
 		}
 	} else {
+		load_image(fileidx);
+        win_clear(img.win);
+        win_clear(tns.win);
+        img_render(&img);
 		tns_render(&tns);
 	}
 	update_info();
