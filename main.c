@@ -18,8 +18,9 @@
 
 #include "sxiv.h"
 #define _MAPPINGS_CONFIG
+#define _THUMBS_CONFIG
 #include "config.h"
-
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
@@ -33,6 +34,7 @@
 #include <time.h>
 #include <X11/keysym.h>
 #include <X11/XF86keysym.h>
+
 
 typedef struct {
 	struct timeval when;
@@ -397,11 +399,176 @@ int ptr_third_x(void)
 	return MAX(0, MIN(2, (x / (win.w * 0.33))));
 }
 
+void dual_render(img_t *img, tns_t *tns)
+{
+    //img->dirty = true;
+    //tns->dirty = true;
+    //printf("img dirty %d, tns->dirty %d\n", img->dirty, tns->dirty);
+	win_t *win;
+	int sx, sy, sw, sh;
+	int dx, dy, dw, dh;
+    int original;
+	Imlib_Image bg;
+	unsigned long c;
+
+	win = img->win;
+    original = win->w;
+    win->w /= 2;
+	img_fit(img);
+    
+    
+	if (img->checkpan) {
+		img_check_pan(img, false);
+		img->checkpan = false;
+	}
+    
+	if (!img->dirty)
+    {
+        win->w = original;
+        goto thumbnail;
+    }
+	/* calculate source and destination offsets:
+	 *   - part of image drawn on full window, or
+	 *   - full image drawn on part of window
+	 */
+	if (img->x <= 0) {
+		sx = -img->x / img->zoom + 0.5;
+		sw = win->w / img->zoom;
+		dx = 0;
+		dw = win->w;
+	} else {
+		sx = 0;
+		sw = img->w;
+		dx = img->x;
+		dw = img->w * img->zoom;
+	}
+	if (img->y <= 0) {
+		sy = -img->y / img->zoom + 0.5;
+		sh = win->h / img->zoom;
+		dy = 0;
+		dh = win->h;
+	} else {
+		sy = 0;
+		sh = img->h;
+		dy = img->y;
+		dh = img->h * img->zoom;
+	}
+
+	win_clear_right_half(win);
+
+    dx += win->w;
+
+	imlib_context_set_image(img->im);
+	imlib_context_set_anti_alias(img->aa);
+	imlib_context_set_drawable(win->buf.pm);
+
+	if (imlib_image_has_alpha()) {
+		if ((bg = imlib_create_image(dw, dh)) == NULL)
+			error(EXIT_FAILURE, ENOMEM, NULL);
+		imlib_context_set_image(bg);
+		imlib_image_set_has_alpha(0);
+
+		if (img->alpha) {
+			int i, c, r;
+			DATA32 col[2] = { 0xFF666666, 0xFF999999 };
+			DATA32 * data = imlib_image_get_data();
+
+			for (r = 0; r < dh; r++) {
+				i = r * dw;
+				if (r == 0 || r == 8) {
+					for (c = 0; c < dw; c++)
+						data[i++] = col[!(c & 8) ^ !r];
+				} else {
+					memcpy(&data[i], &data[(r & 8) * dw], dw * sizeof(data[0]));
+				}
+			}
+			imlib_image_put_back_data(data);
+		} else {
+			c = win->bg.pixel;
+			imlib_context_set_color(c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF, 0xFF);
+			imlib_image_fill_rectangle(0, 0, dw, dh);
+		}
+		imlib_blend_image_onto_image(img->im, 0, sx, sy, sw, sh, 0, 0, dw, dh);
+		imlib_context_set_color_modifier(NULL);
+		imlib_render_image_on_drawable(dx, dy);
+		imlib_free_image();
+		imlib_context_set_color_modifier(img->cmod);
+	} else {
+		imlib_render_image_part_on_drawable_at_size(sx, sy, sw, sh, dx, dy, dw, dh);
+	}
+	img->dirty = false;
+    win->w = original;
+
+thumbnail:
+    ;
+	thumb_t *t;
+	int i, cnt, r, x, y;
+
+	if (!tns->dirty)
+		return;
+
+	win = tns->win;
+    original = win->w;
+    win->w = win->w / 2;
+	win_clear(win);
+	imlib_context_set_drawable(win->buf.pm);
+
+	tns->cols = MAX(1, win->w / tns->dim);
+	tns->rows = MAX(1, win->h / tns->dim);
+
+	if (*tns->cnt < tns->cols * tns->rows) {
+		tns->first = 0;
+		cnt = *tns->cnt;
+	} else {
+		tns_check_view(tns, false);
+		cnt = tns->cols * tns->rows;
+		if ((r = tns->first + cnt - *tns->cnt) >= tns->cols)
+			tns->first -= r - r % tns->cols;
+		if (r > 0)
+			cnt -= r % tns->cols;
+	}
+	r = cnt % tns->cols ? 1 : 0;
+	tns->x = x = (win->w - MIN(cnt, tns->cols) * tns->dim) / 2 + tns->bw + 3;
+	tns->y = y = (win->h - (cnt / tns->cols + r) * tns->dim) / 2 + tns->bw + 3;
+	tns->loadnext = *tns->cnt;
+	tns->end = tns->first + cnt;
+
+	for (i = tns->r_first; i < tns->r_end; i++) {
+		if ((i < tns->first || i >= tns->end) && tns->thumbs[i].im != NULL)
+			tns_unload(tns, i);
+	}
+	tns->r_first = tns->first;
+	tns->r_end = tns->end;
+
+	for (i = tns->first; i < tns->end; i++) {
+		t = &tns->thumbs[i];
+		if (t->im != NULL) {
+			t->x = x + (thumb_sizes[tns->zl] - t->w) / 2;
+			t->y = y + (thumb_sizes[tns->zl] - t->h) / 2;
+			imlib_context_set_image(t->im);
+			imlib_render_image_on_drawable_at_size(t->x, t->y, t->w, t->h);
+			if (tns->files[i].flags & FF_MARK)
+				tns_mark(tns, i, true);
+		} else {
+			tns->loadnext = MIN(tns->loadnext, i);
+		}
+		if ((i + 1) % tns->cols == 0) {
+			x = tns->x;
+			y += tns->dim;
+		} else {
+			x += tns->dim;
+		}
+	}
+	tns->dirty = false;
+	tns_highlight(tns, *tns->sel, true);
+    win->w = original;
+}
 void redraw(void)
 {
 	int t;
 
 	if (mode == MODE_IMAGE) {
+        load_image(fileidx);
 		img_render(&img);
 		if (img.ss.on) {
 			t = img.ss.delay * 100;
@@ -410,11 +577,9 @@ void redraw(void)
 			set_timeout(slideshow, t, false);
 		}
 	} else {
-		load_image(fileidx);
-        win_clear(img.win);
-        win_clear(tns.win);
-        img_render(&img);
-		tns_render(&tns);
+        //printf("Redraw!\n");
+        load_image(fileidx);
+        dual_render(&img, &tns);
 	}
 	update_info();
 	win_draw(&win);
@@ -694,7 +859,7 @@ void run(void)
 	struct timeval timeout;
 	bool discard, init_thumb, load_thumb, to_set;
 	XEvent ev, nextev;
-
+    printf("running!\n");
 	while (true) {
 		to_set = check_timeouts(&timeout);
 		init_thumb = mode == MODE_THUMB && tns.initnext < filecnt;

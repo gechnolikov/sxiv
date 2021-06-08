@@ -17,6 +17,7 @@
  */
 
 #include "sxiv.h"
+#include <stdio.h>
 #define _WINDOW_CONFIG
 #include "config.h"
 #include "icon/data.h"
@@ -341,9 +342,26 @@ void win_clear(win_t *win)
 		                            win->buf.w, win->buf.h, e->depth);
 	}
 	XSetForeground(e->dpy, gc, win->bg.pixel);
-	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->buf.w, win->buf.h);
+    //printf("Buf %d window %d\n", win->buf.w, win->w);
+	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->w, win->buf.h);
 }
 
+void win_clear_right_half(win_t *win)
+{
+	win_env_t *e;
+
+	e = &win->env;
+
+	if (win->w > win->buf.w || win->h + win->bar.h > win->buf.h) {
+		XFreePixmap(e->dpy, win->buf.pm);
+		win->buf.w = MAX(win->buf.w, win->w);
+		win->buf.h = MAX(win->buf.h, win->h + win->bar.h);
+		win->buf.pm = XCreatePixmap(e->dpy, win->xwin,
+		                            win->buf.w, win->buf.h, e->depth);
+	}
+	XSetForeground(e->dpy, gc, win->bg.pixel);
+	XFillRectangle(e->dpy, win->buf.pm, gc, win->w, 0, win->buf.w, win->buf.h);
+}
 #define TEXTWIDTH(win, text, len) \
 	win_draw_text(win, NULL, NULL, 0, 0, text, len, 0)
 

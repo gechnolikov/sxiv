@@ -238,6 +238,7 @@ void img_init(img_t*, win_t*);
 bool img_load(img_t*, const fileinfo_t*);
 CLEANUP void img_close(img_t*, bool);
 void img_render(img_t*);
+bool img_fit(img_t *img);
 bool img_fit_win(img_t*, scalemode_t);
 bool img_zoom(img_t*, float);
 bool img_zoom_in(img_t*);
@@ -250,6 +251,7 @@ void img_rotate(img_t*, degree_t);
 void img_flip(img_t*, flipdir_t);
 void img_toggle_antialias(img_t*);
 bool img_change_gamma(img_t*, int);
+void img_check_pan(img_t *img, bool moved);
 bool img_frame_navigate(img_t*, int);
 bool img_frame_animate(img_t*);
 
@@ -326,12 +328,14 @@ struct tns {
 	bool dirty;
 };
 
+void tns_check_view(tns_t *tns, bool scrolled);
 void tns_clean_cache(tns_t*);
 void tns_init(tns_t*, fileinfo_t*, const int*, int*, win_t*);
 CLEANUP void tns_free(tns_t*);
 bool tns_load(tns_t*, int, bool, bool);
 void tns_unload(tns_t*, int);
 void tns_render(tns_t*);
+void dual_render(img_t*, tns_t*);
 void tns_mark(tns_t*, int, bool);
 void tns_highlight(tns_t*, int, bool);
 bool tns_move_selection(tns_t*, direction_t, int);
@@ -438,6 +442,7 @@ bool win_configure(win_t*, XConfigureEvent*);
 void win_toggle_fullscreen(win_t*);
 void win_toggle_bar(win_t*);
 void win_clear(win_t*);
+void win_clear_right_half(win_t*);
 void win_draw(win_t*);
 void win_draw_rect(win_t*, int, int, int, int, bool, int, unsigned long);
 void win_set_title(win_t*, const char*);
