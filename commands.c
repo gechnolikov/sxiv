@@ -78,10 +78,15 @@ bool cg_switch_mode(arg_t _)
 		}
 		tns.dirty = true;
 		mode = MODE_THUMB;
+	} else if (mode == MODE_THUMB) {
+        load_image(fileidx);
+        tns.dirty = true;
+        mode = MODE_SIM;
 	} else {
-		load_image(fileidx);
-		mode = MODE_IMAGE;
-	}
+        load_image(fileidx);
+        mode = MODE_IMAGE;
+    }
+
 	return true;
 }
 
@@ -90,23 +95,27 @@ bool cg_toggle_fullscreen(arg_t _)
 	win_toggle_fullscreen(&win);
 	/* redraw after next ConfigureNotify event */
 	set_timeout(redraw, TO_REDRAW_RESIZE, false);
-	if (mode == MODE_IMAGE)
+	if (mode == MODE_IMAGE) {
 		img.checkpan = img.dirty = true;
-	else
+    } else if (mode == MODE_THUMB) {
 		tns.dirty = true;
+    } else {
+        img.checkpan = img.dirty = tns.dirty = true;
+    }
 	return false;
 }
 
 bool cg_toggle_bar(arg_t _)
 {
 	win_toggle_bar(&win);
-	if (mode == MODE_IMAGE) {
+	if (mode == MODE_IMAGE || mode == MODE_SIM) {
 		if (win.bar.h > 0)
 			open_info();
 		else
 			close_info();
 		img.checkpan = img.dirty = true;
-	} else {
+	} 
+    if (mode == MODE_THUMB || mode == MODE_SIM) {
 		tns.dirty = true;
 	}
 	return true;
@@ -120,9 +129,10 @@ bool cg_prefix_external(arg_t _)
 
 bool cg_reload_image(arg_t _)
 {
-	if (mode == MODE_IMAGE) {
+	if (mode == MODE_IMAGE || mode == MODE_SIM) {
 		load_image(fileidx);
-	} else {
+	} 
+    if (mode == MODE_THUMB || mode == MODE_SIM) {
 		win_set_cursor(&win, CURSOR_WATCH);
 		if (!tns_load(&tns, fileidx, true, false)) {
 			remove_file(fileidx, false);
@@ -135,9 +145,9 @@ bool cg_reload_image(arg_t _)
 bool cg_remove_image(arg_t _)
 {
 	remove_file(fileidx, true);
-	if (mode == MODE_IMAGE)
+	if (mode == MODE_IMAGE || mode == MODE_SIM)
 		load_image(fileidx);
-	else
+	if (mode == MODE_THUMB || mode == MODE_SIM)
 		tns.dirty = true;
 	return true;
 }
@@ -151,7 +161,12 @@ bool cg_first(arg_t _)
 		fileidx = 0;
 		tns.dirty = true;
 		return true;
-	} else {
+	} else if (mode == MODE_SIM && fileidx != 0) {
+		load_image(0);
+		fileidx = 0;
+		tns.dirty = true;
+        return true;
+    } else {
 		return false;
 	}
 }
@@ -167,7 +182,12 @@ bool cg_n_or_last(arg_t _)
 		fileidx = n;
 		tns.dirty = true;
 		return true;
-	} else {
+	} else if (mode == MODE_SIM && fileidx != n) {
+		load_image(n);
+		fileidx = n;
+		tns.dirty = true;
+		return true;
+    } else {
 		return false;
 	}
 }
@@ -182,7 +202,7 @@ bool cg_scroll_screen(arg_t dir)
 
 bool cg_zoom(arg_t d)
 {
-	if (mode == MODE_THUMB)
+	if (mode == MODE_THUMB || mode == MODE_SIM)
 		return tns_zoom(&tns, d);
 	else if (d > 0)
 		return img_zoom_in(&img);
@@ -205,7 +225,7 @@ bool cg_reverse_marks(arg_t _)
 		files[i].flags ^= FF_MARK;
 		markcnt += files[i].flags & FF_MARK ? 1 : -1;
 	}
-	if (mode == MODE_THUMB)
+	if (mode == MODE_THUMB || mode == MODE_SIM)
 		tns.dirty = true;
 	return true;
 }
@@ -227,7 +247,7 @@ bool cg_unmark_all(arg_t _)
 	for (i = 0; i < filecnt; i++)
 		files[i].flags &= ~FF_MARK;
 	markcnt = 0;
-	if (mode == MODE_THUMB)
+	if (mode == MODE_THUMB || mode == MODE_SIM)
 		tns.dirty = true;
 	return true;
 }
@@ -247,9 +267,10 @@ bool cg_navigate_marked(arg_t n)
 		}
 	}
 	if (new != fileidx) {
-		if (mode == MODE_IMAGE) {
+		if (mode == MODE_IMAGE || mode == MODE_SIM) {
 			load_image(new);
-		} else {
+		} 
+        if (mode == MODE_THUMB || mode == MODE_SIM){
 			fileidx = new;
 			tns.dirty = true;
 		}
@@ -262,7 +283,7 @@ bool cg_navigate_marked(arg_t n)
 bool cg_change_gamma(arg_t d)
 {
 	if (img_change_gamma(&img, d * (prefix > 0 ? prefix : 1))) {
-		if (mode == MODE_THUMB)
+		if (mode == MODE_THUMB || mode == MODE_SIM)
 			tns.dirty = true;
 		return true;
 	} else {

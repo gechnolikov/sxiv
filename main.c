@@ -401,30 +401,26 @@ int ptr_third_x(void)
 
 void dual_render(img_t *img, tns_t *tns)
 {
-    //img->dirty = true;
-    //tns->dirty = true;
-    //printf("img dirty %d, tns->dirty %d\n", img->dirty, tns->dirty);
 	win_t *win;
 	int sx, sy, sw, sh;
 	int dx, dy, dw, dh;
-    int original;
+    int original_width;
 	Imlib_Image bg;
 	unsigned long c;
 
 	win = img->win;
-    original = win->w;
+    original_width = win->w;
     win->w /= 2;
 	img_fit(img);
-    
     
 	if (img->checkpan) {
 		img_check_pan(img, false);
 		img->checkpan = false;
 	}
-    
+
 	if (!img->dirty)
     {
-        win->w = original;
+        win->w = original_width;
         goto thumbnail;
     }
 	/* calculate source and destination offsets:
@@ -454,7 +450,7 @@ void dual_render(img_t *img, tns_t *tns)
 		dh = img->h * img->zoom;
 	}
 
-	win_clear_right_half(win);
+	win_clear_half(win, win->w, 0);
 
     dx += win->w;
 
@@ -497,10 +493,9 @@ void dual_render(img_t *img, tns_t *tns)
 		imlib_render_image_part_on_drawable_at_size(sx, sy, sw, sh, dx, dy, dw, dh);
 	}
 	img->dirty = false;
-    win->w = original;
+    win->w = original_width;
 
-thumbnail:
-    ;
+thumbnail:;
 	thumb_t *t;
 	int i, cnt, r, x, y;
 
@@ -508,9 +503,9 @@ thumbnail:
 		return;
 
 	win = tns->win;
-    original = win->w;
+    original_width = win->w;
     win->w = win->w / 2;
-	win_clear(win);
+	win_clear_half(win, 0, 0);
 	imlib_context_set_drawable(win->buf.pm);
 
 	tns->cols = MAX(1, win->w / tns->dim);
@@ -561,14 +556,14 @@ thumbnail:
 	}
 	tns->dirty = false;
 	tns_highlight(tns, *tns->sel, true);
-    win->w = original;
+    win->w = original_width;
 }
 void redraw(void)
 {
 	int t;
 
 	if (mode == MODE_IMAGE) {
-        load_image(fileidx);
+        //load_image(fileidx);
 		img_render(&img);
 		if (img.ss.on) {
 			t = img.ss.delay * 100;
@@ -576,11 +571,12 @@ void redraw(void)
 				t = MAX(t, img.multi.length);
 			set_timeout(slideshow, t, false);
 		}
+	} else if (mode == MODE_THUMB) {
+        tns_render(&tns);
 	} else {
-        //printf("Redraw!\n");
         load_image(fileidx);
         dual_render(&img, &tns);
-	}
+    }
 	update_info();
 	win_draw(&win);
 	reset_timeout(redraw);
@@ -721,7 +717,7 @@ void run_key_handler(const char *key, unsigned int mask)
 	while (XCheckIfEvent(win.env.dpy, &dump, is_input_ev, NULL));
 
 end:
-	if (mode == MODE_IMAGE) {
+	if (mode == MODE_IMAGE || mode == MODE_SIM) {
 		if (changed) {
 			img_close(&img, true);
 			load_image(fileidx);
@@ -768,7 +764,7 @@ void on_keypress(XKeyEvent *kev)
 		if (keys[i].ksym == ksym &&
 		    MODMASK(keys[i].mask | sh) == MODMASK(kev->state) &&
 		    keys[i].cmd >= 0 && keys[i].cmd < CMD_COUNT &&
-		    (cmds[keys[i].cmd].mode < 0 || cmds[keys[i].cmd].mode == mode))
+		    (cmds[keys[i].cmd].mode < 0 || cmds[keys[i].cmd].mode == (mode != MODE_IMAGE ? MODE_THUMB : MODE_IMAGE)))
 		{
 			if (cmds[keys[i].cmd].func(keys[i].arg))
 				dirty = true;
@@ -793,7 +789,7 @@ void on_buttonpress(XButtonEvent *bev)
 			if (buttons[i].button == bev->button &&
 			    MODMASK(buttons[i].mask) == MODMASK(bev->state) &&
 			    buttons[i].cmd >= 0 && buttons[i].cmd < CMD_COUNT &&
-			    (cmds[buttons[i].cmd].mode < 0 || cmds[buttons[i].cmd].mode == mode))
+			    (cmds[buttons[i].cmd].mode < 0 || cmds[buttons[i].cmd].mode == (mode != MODE_IMAGE ? MODE_THUMB : MODE_IMAGE)))
 			{
 				if (cmds[buttons[i].cmd].func(buttons[i].arg))
 					dirty = true;
@@ -859,11 +855,10 @@ void run(void)
 	struct timeval timeout;
 	bool discard, init_thumb, load_thumb, to_set;
 	XEvent ev, nextev;
-    printf("running!\n");
 	while (true) {
 		to_set = check_timeouts(&timeout);
-		init_thumb = mode == MODE_THUMB && tns.initnext < filecnt;
-		load_thumb = mode == MODE_THUMB && tns.loadnext < tns.end;
+		init_thumb = (mode == MODE_THUMB || mode == MODE_SIM) && tns.initnext < filecnt;
+		load_thumb = (mode == MODE_THUMB || mode == MODE_SIM) && tns.loadnext < tns.end;
 
 		if ((init_thumb || load_thumb || to_set || info.fd != -1 ||
 			   arl.fd != -1) && XPending(win.env.dpy) == 0)
@@ -940,9 +935,13 @@ void run(void)
 					if (mode == MODE_IMAGE) {
 						img.dirty = true;
 						img.checkpan = true;
-					} else {
+					} else if (mode == MODE_THUMB) {
 						tns.dirty = true;
-					}
+					} else {
+                        img.dirty = true;
+                        img.checkpan = true;
+                        tns.dirty = true;
+                    }
 					if (!resized) {
 						redraw();
 						set_timeout(clear_resize, TO_REDRAW_RESIZE, false);

@@ -428,13 +428,10 @@ void img_render(img_t *img)
 	win_t *win;
 	int sx, sy, sw, sh;
 	int dx, dy, dw, dh;
-    int original;
 	Imlib_Image bg;
 	unsigned long c;
 
 	win = img->win;
-    original = win->w;
-    win->w /= 2;
 	img_fit(img);
 
 	if (img->checkpan) {
@@ -443,10 +440,7 @@ void img_render(img_t *img)
 	}
 
 	if (!img->dirty)
-    {
-        win->w = original;
 		return;
-    }
 
 	/* calculate source and destination offsets:
 	 *   - part of image drawn on full window, or
@@ -475,8 +469,7 @@ void img_render(img_t *img)
 		dh = img->h * img->zoom;
 	}
 
-	//win_clear(win);
-    dx += win->w;
+	win_clear(win);
 	imlib_context_set_image(img->im);
 	imlib_context_set_anti_alias(img->aa);
 	imlib_context_set_drawable(win->buf.pm);
@@ -516,7 +509,6 @@ void img_render(img_t *img)
 		imlib_render_image_part_on_drawable_at_size(sx, sy, sw, sh, dx, dy, dw, dh);
 	}
 	img->dirty = false;
-    win->w = original;
 }
 
 bool img_fit_win(img_t *img, scalemode_t sm)
