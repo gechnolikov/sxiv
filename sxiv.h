@@ -64,7 +64,8 @@ typedef enum {
 
 typedef enum {
 	MODE_IMAGE,
-	MODE_THUMB
+	MODE_THUMB,
+    MODE_SIM
 } appmode_t;
 
 typedef enum {
@@ -442,7 +443,7 @@ bool win_configure(win_t*, XConfigureEvent*);
 void win_toggle_fullscreen(win_t*);
 void win_toggle_bar(win_t*);
 void win_clear(win_t*);
-void win_clear_right_half(win_t*);
+void win_clear_half(win_t *win, int sx, int sy);
 void win_draw(win_t*);
 void win_draw_rect(win_t*, int, int, int, int, bool, int, unsigned long);
 void win_set_title(win_t*, const char*);

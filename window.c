@@ -342,11 +342,10 @@ void win_clear(win_t *win)
 		                            win->buf.w, win->buf.h, e->depth);
 	}
 	XSetForeground(e->dpy, gc, win->bg.pixel);
-    //printf("Buf %d window %d\n", win->buf.w, win->w);
-	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->w, win->buf.h);
+	XFillRectangle(e->dpy, win->buf.pm, gc, 0, 0, win->buf.w, win->buf.h);
 }
 
-void win_clear_right_half(win_t *win)
+void win_clear_half(win_t *win, int sx, int sy)
 {
 	win_env_t *e;
 
@@ -360,8 +359,9 @@ void win_clear_right_half(win_t *win)
 		                            win->buf.w, win->buf.h, e->depth);
 	}
 	XSetForeground(e->dpy, gc, win->bg.pixel);
-	XFillRectangle(e->dpy, win->buf.pm, gc, win->w, 0, win->buf.w, win->buf.h);
+	XFillRectangle(e->dpy, win->buf.pm, gc, sx, sy, win->w, win->buf.h);
 }
+
 #define TEXTWIDTH(win, text, len) \
 	win_draw_text(win, NULL, NULL, 0, 0, text, len, 0)
 
