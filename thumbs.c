@@ -582,9 +582,8 @@ int tns_translate(tns_t *tns, int x, int y)
 {
 	int n;
 
-	if (x < tns->x || y < tns->y)
+	if (x < tns->x || y < tns->y || x > (tns->dim * tns->cols + tns->x))
 		return -1;
-
 	n = tns->first + (y - tns->y) / tns->dim * tns->cols +
 	    (x - tns->x) / tns->dim;
 	if (n >= *tns->cnt)
