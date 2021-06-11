@@ -329,7 +329,7 @@ bool mark_image(int n, bool on)
 	if (!!(files[n].flags & FF_MARK) != on) {
 		files[n].flags ^= FF_MARK;
 		markcnt += on ? 1 : -1;
-		if (mode == MODE_THUMB)
+		if (mode == MODE_THUMB || mode == MODE_SIM)
 			tns_mark(&tns, n, on);
 		return true;
 	}
