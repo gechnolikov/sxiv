@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+void run_filter(void);
 void remove_file(int, bool);
 void load_image(int);
 bool mark_image(int, bool);
@@ -270,6 +271,11 @@ bool cg_change_gamma(arg_t d)
 	}
 }
 
+bool cg_filter(arg_t _)
+{
+    run_filter();
+    return true;
+}
 bool ci_navigate(arg_t n)
 {
 	if (prefix > 0)

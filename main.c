@@ -50,10 +50,14 @@ void clear_resize(void);
 appmode_t mode;
 arl_t arl;
 img_t img;
+
+tns_t original_thumbs;
 tns_t tns;
 win_t win;
 
+fileinfo_t *original;
 fileinfo_t *files;
+int original_filecnt;
 int filecnt, fileidx;
 int alternate;
 int markcnt;
@@ -118,7 +122,12 @@ void check_add_file(char *filename, bool given)
 
 	if (fileidx == filecnt) {
 		filecnt *= 2;
-		files = erealloc(files, filecnt * sizeof(*files));
+
+        if (original == files)
+            original = files = erealloc(files, filecnt * sizeof(*files));
+        else
+            files = erealloc(files, filecnt * sizeof(*files));
+
 		memset(&files[filecnt/2], 0, filecnt/2 * sizeof(*files));
 	}
 
@@ -466,6 +475,139 @@ void clear_resize(void)
 Bool is_input_ev(Display *dpy, XEvent *ev, XPointer arg)
 {
 	return ev->type == ButtonPress || ev->type == KeyPress;
+}
+
+void run_filter(void)
+{
+    if (mode != MODE_THUMB)
+    {
+        return;
+    }
+	pid_t pid;
+	FILE *pfs, *pfsin;
+	int f, i, pfd[2], pfd2[2];
+	XEvent dump;
+
+	if (pipe(pfd) < 0 || pipe(pfd2) < 0) {
+		error(0, errno, "pipe");
+		return;
+	}
+
+	if ((pfs = fdopen(pfd[1], "w")) == NULL || (pfsin = fdopen(pfd2[0], "r")) == NULL) {
+		error(0, errno, (pfs == NULL ? "open pipe1" : "open pipe2"));
+		close(pfd[0]), close(pfd[1]);
+        close(pfd2[0]), close(pfd2[1]);
+		return;
+	}
+    
+	close_info();
+	strncpy(win.bar.l.buf, "Running filter script...", win.bar.l.size);
+	win_draw(&win);
+	win_set_cursor(&win, CURSOR_WATCH);
+
+	//snprintf(kstr, sizeof(kstr), "%s%s%s%s",
+	         //mask & ControlMask ? "C-" : "",
+	         //mask & Mod1Mask    ? "M-" : "",
+	         //mask & ShiftMask   ? "S-" : "", key);
+
+	if ((pid = fork()) == 0) {
+		close(pfd[1]);
+        close(pfd2[0]);
+		dup2(pfd[0], 0);
+        dup2(pfd2[1], 1); 
+		execl("/usr/bin/testing", "testing", NULL, NULL);
+		error(EXIT_FAILURE, errno, "exec: filter");
+	}
+    close(pfd[0]);
+    close(pfd2[1]);
+	if (pid < 0) {
+		error(0, errno, "fork");
+		fclose(pfs);
+        fclose(pfsin);
+		goto end;
+	}
+
+	for (i = 0; i < filecnt; i++) {
+        fprintf(pfs, "%s\n", files[i].name);
+	}
+	fclose(pfs);
+    
+    char *line = NULL;
+    size_t len = 0;
+    f = 0;
+
+    if (files != original)
+    {
+        free(tns.thumbs);
+        free(files);
+    }
+    files = emalloc(filecnt * sizeof(*files));
+    tns.files = files;
+    tns.thumbs = emalloc(filecnt * sizeof(thumb_t));
+	tns.initnext = tns.loadnext = 0;
+	tns.first = tns.end = tns.r_first = tns.r_end = 0;
+    tns.dirty = true;
+
+    fileidx = 0;
+
+    int chosenindices[1000];
+    while (f < filecnt && getline(&line, &len, pfsin) > 0)
+    {
+        printf("%s\n", line);
+        for (; f < filecnt; f++)
+        {
+            if (line[strlen(line) - 1] == '\n')
+                line[strlen(line) - 1] = '\0';
+            if (strcmp(line, original[f].name) == 0)
+            {
+            //{
+                chosenindices[fileidx++] = f;
+                break;
+            }
+                    /*
+                //uhoh
+                tns.thumbs[fileidx] = tns.original_thumbs[f];
+                files[fileidx++] = original[f];
+                break;
+                
+            }
+            else
+            {
+                thumb_t *t = &tns.original_thumbs[f];
+
+                if (t->im != NULL) {
+                    imlib_context_set_image(t->im);
+                    imlib_free_image();
+                    t->im = NULL;
+                }
+            }
+            */
+        }
+    }
+    filecnt = fileidx;
+    files = erealloc(files, filecnt * sizeof(*files));
+    tns.thumbs = erealloc(tns.thumbs, filecnt * sizeof(thumb_t));
+    //chosenindices[filecnt] = -1;
+    fileidx = 0;
+    for (int i = 0; i < filecnt; i++)
+    {
+        int index = chosenindices[i];
+        tns.thumbs[fileidx] = tns.original_thumbs[index];
+        files[fileidx++] = original[index];
+    }
+    tns.files = files;
+    fileidx = 0;
+    fclose(pfsin);
+	//while (waitpid(pid, NULL, 0) == -1 && errno == EINTR);
+
+    tns.initnext = 1;
+    tns.loadnext = 1;
+	/* drop user input events that occurred while running the key handler */
+	while (XCheckIfEvent(win.env.dpy, &dump, is_input_ev, NULL));
+
+end:
+	reset_cursor();
+	redraw();
 }
 
 void run_key_handler(const char *key, unsigned int mask)
@@ -851,6 +993,8 @@ int main(int argc, char **argv)
 		filecnt = options->filecnt;
 
 	files = emalloc(filecnt * sizeof(*files));
+    original = files;
+    original_filecnt = filecnt;
 	memset(files, 0, filecnt * sizeof(*files));
 	fileidx = 0;
 

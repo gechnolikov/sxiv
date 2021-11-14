@@ -150,7 +150,7 @@ void tns_init(tns_t *tns, fileinfo_t *files, const int *cnt, int *sel,
 	const char *homedir, *dsuffix = "";
 
 	if (cnt != NULL && *cnt > 0) {
-		tns->thumbs = (thumb_t*) emalloc(*cnt * sizeof(thumb_t));
+		tns->original_thumbs = tns->thumbs = (thumb_t*) emalloc(*cnt * sizeof(thumb_t));
 		memset(tns->thumbs, 0, *cnt * sizeof(thumb_t));
 	} else {
 		tns->thumbs = NULL;
