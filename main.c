@@ -55,7 +55,7 @@ tns_t original_thumbs;
 tns_t tns;
 win_t win;
 
-fileinfo_t *original;
+fileinfo_t *original_files;
 fileinfo_t *files;
 int original_filecnt;
 int filecnt, fileidx;
@@ -84,6 +84,10 @@ struct {
 	extcmd_t f;
 	bool warned;
 } keyhandler;
+
+struct {
+    extcmd_t f;
+} filter;
 
 timeout_t timeouts[] = {
 	{ { 0, 0 }, false, redraw       },
@@ -123,8 +127,8 @@ void check_add_file(char *filename, bool given)
 	if (fileidx == filecnt) {
 		filecnt *= 2;
 
-        if (original == files)
-            original = files = erealloc(files, filecnt * sizeof(*files));
+        if (original_files == files)
+            original_files = files = erealloc(files, filecnt * sizeof(*files));
         else
             files = erealloc(files, filecnt * sizeof(*files));
 
@@ -505,17 +509,12 @@ void run_filter(void)
 	win_draw(&win);
 	win_set_cursor(&win, CURSOR_WATCH);
 
-	//snprintf(kstr, sizeof(kstr), "%s%s%s%s",
-	         //mask & ControlMask ? "C-" : "",
-	         //mask & Mod1Mask    ? "M-" : "",
-	         //mask & ShiftMask   ? "S-" : "", key);
-
 	if ((pid = fork()) == 0) {
 		close(pfd[1]);
         close(pfd2[0]);
 		dup2(pfd[0], 0);
         dup2(pfd2[1], 1); 
-		execl("/usr/bin/testing", "testing", NULL, NULL);
+		execl(filter.f.cmd, filter.f.cmd, NULL, NULL);
 		error(EXIT_FAILURE, errno, "exec: filter");
 	}
     close(pfd[0]);
@@ -532,80 +531,80 @@ void run_filter(void)
 	}
 	fclose(pfs);
     
+    int oldfileidx = fileidx;
+    fileidx = 0;
+
+    bool* index_chosen = emalloc(original_filecnt * sizeof(bool));
+    for (i = 0; i < original_filecnt; i++)
+        index_chosen[i] = false;
+
     char *line = NULL;
     size_t len = 0;
-    f = 0;
 
-    if (files != original)
+    while (getline(&line, &len, pfsin) > 0)
+    {
+        if (line[strlen(line) - 1] == '\n')
+            line[strlen(line) - 1] = '\0';
+
+        for (f = 0; f < original_filecnt; f++)
+        {
+            if (strcmp(line, original_files[f].name) == 0)
+            {
+                index_chosen[f] = true;
+                fileidx++;
+                break;
+            }
+        }
+    }
+    if (fileidx == 0)
+    {
+        fileidx = oldfileidx;
+        goto end;
+    }
+    
+    if (files != original_files)
     {
         free(tns.thumbs);
         free(files);
     }
+
+    filecnt = fileidx;
     files = emalloc(filecnt * sizeof(*files));
     tns.files = files;
     tns.thumbs = emalloc(filecnt * sizeof(thumb_t));
-	tns.initnext = tns.loadnext = 0;
 	tns.first = tns.end = tns.r_first = tns.r_end = 0;
     tns.dirty = true;
 
     fileidx = 0;
-
-    int chosenindices[1000];
-    while (f < filecnt && getline(&line, &len, pfsin) > 0)
+    for (i = 0; i < original_filecnt; i++) 
     {
-        printf("%s\n", line);
-        for (; f < filecnt; f++)
+        if (index_chosen[i]) 
         {
-            if (line[strlen(line) - 1] == '\n')
-                line[strlen(line) - 1] = '\0';
-            if (strcmp(line, original[f].name) == 0)
-            {
-            //{
-                chosenindices[fileidx++] = f;
-                break;
+            tns.thumbs[fileidx] = tns.original_thumbs[i];
+            files[fileidx++] = original_files[i];
+        }
+        else 
+        {
+            thumb_t *t = &tns.original_thumbs[i];
+            if (t->im != NULL) {
+                imlib_context_set_image(t->im);
+                imlib_free_image();
+                t->im = NULL;
             }
-                    /*
-                //uhoh
-                tns.thumbs[fileidx] = tns.original_thumbs[f];
-                files[fileidx++] = original[f];
-                break;
-                
-            }
-            else
-            {
-                thumb_t *t = &tns.original_thumbs[f];
-
-                if (t->im != NULL) {
-                    imlib_context_set_image(t->im);
-                    imlib_free_image();
-                    t->im = NULL;
-                }
-            }
-            */
         }
     }
-    filecnt = fileidx;
-    files = erealloc(files, filecnt * sizeof(*files));
-    tns.thumbs = erealloc(tns.thumbs, filecnt * sizeof(thumb_t));
-    //chosenindices[filecnt] = -1;
-    fileidx = 0;
-    for (int i = 0; i < filecnt; i++)
-    {
-        int index = chosenindices[i];
-        tns.thumbs[fileidx] = tns.original_thumbs[index];
-        files[fileidx++] = original[index];
-    }
-    tns.files = files;
-    fileidx = 0;
-    fclose(pfsin);
-	//while (waitpid(pid, NULL, 0) == -1 && errno == EINTR);
 
-    tns.initnext = 1;
-    tns.loadnext = 1;
+    tns.files = files;
+    tns.initnext = fileidx;
+    fileidx = 0;
+    tns.loadnext = 0;
+
 	/* drop user input events that occurred while running the key handler */
 	while (XCheckIfEvent(win.env.dpy, &dump, is_input_ev, NULL));
 
 end:
+    fclose(pfsin);
+    free(index_chosen);
 	reset_cursor();
 	redraw();
 }
@@ -993,8 +992,7 @@ int main(int argc, char **argv)
 		filecnt = options->filecnt;
 
 	files = emalloc(filecnt * sizeof(*files));
-    original = files;
-    original_filecnt = filecnt;
+    original_files = files;
 	memset(files, 0, filecnt * sizeof(*files));
 	fileidx = 0;
 
@@ -1038,6 +1036,7 @@ int main(int argc, char **argv)
 		error(EXIT_FAILURE, 0, "No valid image file given, aborting");
 
 	filecnt = fileidx;
+    original_filecnt = filecnt;
 	fileidx = options->startnum < filecnt ? options->startnum : 0;
 
 	for (i = 0; i < ARRLEN(buttons); i++) {
@@ -1057,8 +1056,8 @@ int main(int argc, char **argv)
 		dsuffix = "/.config";
 	}
 	if (homedir != NULL) {
-		extcmd_t *cmd[] = { &info.f, &keyhandler.f };
-		const char *name[] = { "image-info", "key-handler" };
+		extcmd_t *cmd[] = { &info.f, &keyhandler.f, &filter.f };
+		const char *name[] = { "image-info", "key-handler", "filter" };
 
 		for (i = 0; i < ARRLEN(cmd); i++) {
 			n = strlen(homedir) + strlen(dsuffix) + strlen(name[i]) + 12;
