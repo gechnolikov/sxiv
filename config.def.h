@@ -62,6 +62,7 @@ static const keymap_t keys[] = {
 	{ 0,            XK_q,             g_quit,               None },
 	{ 0,            XK_Return,        g_switch_mode,        None },
 	{ 0,            XK_f,             g_toggle_fullscreen,  None },
+	{ 0,            XK_F,             g_filter,  None },
 	{ 0,            XK_b,             g_toggle_bar,         None },
 	{ ControlMask,  XK_x,             g_prefix_external,    None },
 	{ 0,            XK_g,             g_first,              None },
