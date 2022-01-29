@@ -15,7 +15,7 @@ Pressing return/enter now cycles through thumbnail mode, split view mode, and im
 Filtering script
 --------
 You may now put a script called "filter" in the same location as "key-handler" (exec/.). 
-When you press shift+f, this script will be invoked, with a list of the files sxiv was first called to display, separated by newlines, passed to the script's stdin. The script should print a subset of these files to stdout (again separated by newlines), and these files will be displayed, while the files not selected will not be displayed. Any line of the script's stdout that does not match a file that was passed to the script's stdin will simply be ignored. 
+When you press shift+f, this script will be invoked. The script should print the files that you want to be displayed to stdout, separated by newlines. These files will be displayed, while the files not selected will not be displayed. Any line of the script's stdout that does not match any file that sxiv was originally opened with will be ignored.
 
 Features
 --------
