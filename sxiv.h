@@ -309,6 +309,7 @@ typedef struct {
 
 struct tns {
 	fileinfo_t *files;
+    thumb_t *original_thumbs;
 	thumb_t *thumbs;
 	const int *cnt;
 	int *sel;

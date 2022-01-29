@@ -52,10 +52,14 @@ void clear_resize(void);
 appmode_t mode;
 arl_t arl;
 img_t img;
+
+tns_t original_thumbs;
 tns_t tns;
 win_t win;
 
+fileinfo_t *original_files;
 fileinfo_t *files;
+int original_filecnt;
 int filecnt, fileidx;
 int alternate;
 int markcnt;
@@ -82,6 +86,10 @@ struct {
 	extcmd_t f;
 	bool warned;
 } keyhandler;
+
+struct {
+    extcmd_t f;
+} filter;
 
 timeout_t timeouts[] = {
 	{ { 0, 0 }, false, redraw       },
@@ -120,7 +128,12 @@ void check_add_file(char *filename, bool given)
 
 	if (fileidx == filecnt) {
 		filecnt *= 2;
-		files = erealloc(files, filecnt * sizeof(*files));
+
+        if (original_files == files)
+            original_files = files = erealloc(files, filecnt * sizeof(*files));
+        else
+            files = erealloc(files, filecnt * sizeof(*files));
+
 		memset(&files[filecnt/2], 0, filecnt/2 * sizeof(*files));
 	}
 
@@ -633,6 +646,122 @@ Bool is_input_ev(Display *dpy, XEvent *ev, XPointer arg)
 	return ev->type == ButtonPress || ev->type == KeyPress;
 }
 
+void run_filter(void)
+{
+    if (mode == MODE_IMAGE)
+    {
+        return;
+    }
+	pid_t pid;
+	FILE *pfs;
+	int f, i, pfd[2];
+	XEvent dump;
+
+    if (pipe(pfd) < 0) {
+		error(0, errno, "pipe2");
+		return;
+	}
+	if ((pfs = fdopen(pfd[0], "r")) == NULL) {
+		error(0, errno, "open pipe");
+        close(pfd[0]), close(pfd[1]);
+		return;
+	}
+    
+	close_info();
+	strncpy(win.bar.l.buf, "Running filter script...", win.bar.l.size);
+	win_draw(&win);
+	win_set_cursor(&win, CURSOR_WATCH);
+
+	if ((pid = fork()) == 0) {
+        close(pfd[0]);
+        dup2(pfd[1], 1); 
+		execl(filter.f.cmd, filter.f.cmd, NULL, NULL);
+		error(EXIT_FAILURE, errno, "exec: filter");
+	}
+    close(pfd[1]);
+	if (pid < 0) {
+		error(0, errno, "fork");
+        fclose(pfs);
+		goto end;
+	}
+    int oldfileidx = fileidx;
+    fileidx = 0;
+
+    bool* index_chosen = emalloc(original_filecnt * sizeof(bool));
+    for (i = 0; i < original_filecnt; i++)
+        index_chosen[i] = false;
+
+    char *line = NULL;
+    size_t len = 0;
+
+    while (getline(&line, &len, pfs) > 0)
+    {
+        if (line[strlen(line) - 1] == '\n')
+            line[strlen(line) - 1] = '\0';
+
+        for (f = 0; f < original_filecnt; f++)
+        {
+            if (strcmp(line, original_files[f].path) == 0)
+            {
+                index_chosen[f] = true;
+                fileidx++;
+                break;
+            }
+        }
+    }
+    fclose(pfs);
+
+    if (fileidx == 0)
+    {
+        fileidx = oldfileidx;
+        goto end;
+    }
+    
+    if (files != original_files)
+    {
+        free(tns.thumbs);
+        free(files);
+    }
+
+    filecnt = fileidx;
+    files = emalloc(filecnt * sizeof(*files));
+    tns.files = files;
+    tns.thumbs = emalloc(filecnt * sizeof(thumb_t));
+	tns.first = tns.end = tns.r_first = tns.r_end = 0;
+    tns.dirty = true;
+
+    fileidx = 0;
+    for (i = 0; i < original_filecnt; i++) 
+    {
+        if (index_chosen[i]) 
+        {
+            tns.thumbs[fileidx] = tns.original_thumbs[i];
+            files[fileidx++] = original_files[i];
+        }
+        else 
+        {
+            thumb_t *t = &tns.original_thumbs[i];
+            if (t->im != NULL) {
+                imlib_context_set_image(t->im);
+                imlib_free_image();
+                t->im = NULL;
+            }
+        }
+    }
+
+    tns.files = files;
+    tns.initnext = fileidx;
+    fileidx = 0;
+    tns.loadnext = 0;
+
+	/* drop user input events that occurred while running the key handler */
+	while (XCheckIfEvent(win.env.dpy, &dump, is_input_ev, NULL));
+
+end:
+    free(index_chosen);
+	reset_cursor();
+	redraw();
+}
 void run_key_handler(const char *key, unsigned int mask)
 {
 	pid_t pid;
@@ -1019,6 +1148,7 @@ int main(int argc, char **argv)
 		filecnt = options->filecnt;
 
 	files = emalloc(filecnt * sizeof(*files));
+    original_files = files;
 	memset(files, 0, filecnt * sizeof(*files));
 	fileidx = 0;
 
@@ -1062,6 +1192,7 @@ int main(int argc, char **argv)
 		error(EXIT_FAILURE, 0, "No valid image file given, aborting");
 
 	filecnt = fileidx;
+    original_filecnt = filecnt;
 	fileidx = options->startnum < filecnt ? options->startnum : 0;
 
 	for (i = 0; i < ARRLEN(buttons); i++) {
@@ -1081,8 +1212,8 @@ int main(int argc, char **argv)
 		dsuffix = "/.config";
 	}
 	if (homedir != NULL) {
-		extcmd_t *cmd[] = { &info.f, &keyhandler.f };
-		const char *name[] = { "image-info", "key-handler" };
+		extcmd_t *cmd[] = { &info.f, &keyhandler.f, &filter.f };
+		const char *name[] = { "image-info", "key-handler", "filter" };
 
 		for (i = 0; i < ARRLEN(cmd); i++) {
 			n = strlen(homedir) + strlen(dsuffix) + strlen(name[i]) + 12;

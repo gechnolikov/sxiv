@@ -15,6 +15,7 @@ G_CMD(mark_range)
 G_CMD(unmark_all)
 G_CMD(navigate_marked)
 G_CMD(change_gamma)
+G_CMD(filter)
 
 I_CMD(navigate)
 I_CMD(cursor_navigate)
