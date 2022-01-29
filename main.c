@@ -483,24 +483,22 @@ Bool is_input_ev(Display *dpy, XEvent *ev, XPointer arg)
 
 void run_filter(void)
 {
-    if (mode != MODE_THUMB)
+    if (mode == MODE_IMAGE)
     {
         return;
     }
 	pid_t pid;
-	FILE *pfs, *pfsin;
-	int f, i, pfd[2], pfd2[2];
+	FILE *pfs;
+	int f, i, pfd[2];
 	XEvent dump;
 
-	if (pipe(pfd) < 0 || pipe(pfd2) < 0) {
-		error(0, errno, "pipe");
+    if (pipe(pfd) < 0) {
+		error(0, errno, "pipe2");
 		return;
 	}
-
-	if ((pfs = fdopen(pfd[1], "w")) == NULL || (pfsin = fdopen(pfd2[0], "r")) == NULL) {
-		error(0, errno, (pfs == NULL ? "open pipe1" : "open pipe2"));
-		close(pfd[0]), close(pfd[1]);
-        close(pfd2[0]), close(pfd2[1]);
+	if ((pfs = fdopen(pfd[0], "r")) == NULL) {
+		error(0, errno, "open pipe");
+        close(pfd[0]), close(pfd[1]);
 		return;
 	}
     
@@ -510,27 +508,17 @@ void run_filter(void)
 	win_set_cursor(&win, CURSOR_WATCH);
 
 	if ((pid = fork()) == 0) {
-		close(pfd[1]);
-        close(pfd2[0]);
-		dup2(pfd[0], 0);
-        dup2(pfd2[1], 1); 
+        close(pfd[0]);
+        dup2(pfd[1], 1); 
 		execl(filter.f.cmd, filter.f.cmd, NULL, NULL);
 		error(EXIT_FAILURE, errno, "exec: filter");
 	}
-    close(pfd[0]);
-    close(pfd2[1]);
+    close(pfd[1]);
 	if (pid < 0) {
 		error(0, errno, "fork");
-		fclose(pfs);
-        fclose(pfsin);
+        fclose(pfs);
 		goto end;
 	}
-
-	for (i = 0; i < filecnt; i++) {
-        fprintf(pfs, "%s\n", files[i].name);
-	}
-	fclose(pfs);
-    
     int oldfileidx = fileidx;
     fileidx = 0;
 
@@ -541,14 +529,14 @@ void run_filter(void)
     char *line = NULL;
     size_t len = 0;
 
-    while (getline(&line, &len, pfsin) > 0)
+    while (getline(&line, &len, pfs) > 0)
     {
         if (line[strlen(line) - 1] == '\n')
             line[strlen(line) - 1] = '\0';
 
         for (f = 0; f < original_filecnt; f++)
         {
-            if (strcmp(line, original_files[f].name) == 0)
+            if (strcmp(line, original_files[f].path) == 0)
             {
                 index_chosen[f] = true;
                 fileidx++;
@@ -556,6 +544,8 @@ void run_filter(void)
             }
         }
     }
+    fclose(pfs);
+
     if (fileidx == 0)
     {
         fileidx = oldfileidx;
@@ -603,12 +593,10 @@ void run_filter(void)
 	while (XCheckIfEvent(win.env.dpy, &dump, is_input_ev, NULL));
 
 end:
-    fclose(pfsin);
     free(index_chosen);
 	reset_cursor();
 	redraw();
 }
-
 void run_key_handler(const char *key, unsigned int mask)
 {
 	pid_t pid;
