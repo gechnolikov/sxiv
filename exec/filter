@@ -1,0 +1,5 @@
+#!/bin/sh
+tags="$(tmsu tags | dmenu -l 5)"
+[ -z "$tags" ] && exit
+cleaned_tags="$(echo "$tags" | head -c -1 | tr '\n' ' ')"
+realpath $(tmsu files $(echo "$cleaned_tags" | tr '\\' ' ' ))
