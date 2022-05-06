@@ -17,6 +17,8 @@ Filtering script
 You may now put a script called "filter" in the same location as "key-handler" (exec/.). 
 When you press shift+f, this script will be invoked. The script should print the files that you want to be displayed to stdout, separated by newlines. These files will be displayed, while the files not selected will not be displayed. Any line of the script's stdout that does not match any file that sxiv was originally opened with will be ignored.
 
+There is now a default, example filter script. tmsu and dmenu are required dependencies for that script. 
+
 Features
 --------
 
